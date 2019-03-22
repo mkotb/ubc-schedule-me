@@ -39,11 +39,19 @@ data class InputCourseSelection (
     }
 }
 
+val courseCache = HashMap<InputClass, Course>()
+
 data class InputClass (
     val subject: String,
     val course: String
 ) {
-    fun toCourse(): Course? {
+    fun toCourse(): Course {
+        val cached = courseCache[this]
+
+        if (cached != null) {
+            return cached
+        }
+
         val doc = Jsoup.connect(String.format(BASE_COURSE_URL, subject, course)).get()
         val content = doc.selectFirst(".content")
         // search for all sections
@@ -54,12 +62,15 @@ data class InputClass (
         val mappedSections = sections
             .mapNotNull { resolveSection(subject, course, it) }
             .associateBy { it.section }.toMutableMap()
-
-        return Course (
+        val course = Course (
             mappedSections,
             subject,
             course
         )
+
+        courseCache[this] = course
+
+        return course
     }
 }
 
