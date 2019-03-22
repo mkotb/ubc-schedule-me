@@ -3,7 +3,7 @@ package com.mkotb.scheduler
 import java.util.*
 
 data class Course (
-    val sections: Map<String, Section>,
+    val sections: MutableMap<String, Section>,
     val subjectCode: String,
     val courseNumber: String
 ) {

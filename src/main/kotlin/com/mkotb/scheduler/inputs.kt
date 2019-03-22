@@ -1,16 +1,40 @@
 package com.mkotb.scheduler
 
+import com.google.gson.TypeAdapter
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonWriter
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 
+data class InputStudentFile (
+    val debug: Boolean,
+    val students: List<InputCourseSelection>
+)
+
 data class InputCourseSelection (
-    val requiredCourses: List<InputClass>,
+    val name: String,
+    val requiredFirstCourses: List<InputClass>,
+    val requiredSecondCourses: List<InputClass>,
     val electives: List<InputClass>
 ) {
-    fun toCourseSelection(): CourseSelection {
-        return CourseSelection (
-            requiredCourses.mapNotNull { it.toCourse() },
-            electives.mapNotNull { it.toCourse() }
+    fun toSchedule(): Schedule {
+        System.out.println("$name's required courses...")
+
+        val first = requiredFirstCourses.mapNotNull { it.toCourse() }
+        val second = requiredSecondCourses.mapNotNull { it.toCourse() }
+
+        System.out.println("Done!")
+        System.out.println("$name's electives...")
+
+        val pulledElectives = electives.mapNotNull { it.toCourse() }.toMutableList()
+
+        System.out.println("Done!")
+
+        return Schedule (
+            name,
+            first,
+            second,
+            pulledElectives
         )
     }
 }
@@ -29,13 +53,24 @@ data class InputClass (
         // retrieve the rest of their information and map by their name
         val mappedSections = sections
             .mapNotNull { resolveSection(subject, course, it) }
-            .associateBy { it.section }
+            .associateBy { it.section }.toMutableMap()
 
         return Course (
             mappedSections,
             subject,
             course
         )
+    }
+}
+
+object InputClassAdapter: TypeAdapter<InputClass>() {
+    override fun write(out: JsonWriter, value: InputClass) {
+        out.value(value.subject + " " + value.course)
+    }
+
+    override fun read(reader: JsonReader): InputClass {
+        val input = reader.nextString().split(" ")
+        return InputClass(input[0], input[1])
     }
 }
 

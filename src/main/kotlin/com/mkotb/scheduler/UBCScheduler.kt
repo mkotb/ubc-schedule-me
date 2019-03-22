@@ -1,57 +1,66 @@
 package com.mkotb.scheduler
 
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import java.io.File
+import java.io.FileInputStream
+import java.io.InputStreamReader
 import java.time.DayOfWeek
 import java.util.*
 import kotlin.collections.HashSet
-import kotlin.system.exitProcess
 
-var TERM = "1"
+var term = "1"
+var debug = false
 const val CURRENT_YEAR = "2018"
 const val CURRENT_SESSION = "W"
 const val BASE_URL = "https://courses.students.ubc.ca"
 const val BASE_COURSE_URL = "$BASE_URL/cs/courseschedule?tname=subj-course&dept=%s&course=%s&pname=subjarea&sessyr=$CURRENT_YEAR&sesscd=$CURRENT_SESSION"
 const val BASE_SECTION_URL = "$BASE_URL/cs/courseschedule?pname=subjarea&tname=subj-section&dept=%s&course=%s&section=%s&sessyr=$CURRENT_YEAR&sesscd=$CURRENT_SESSION"
+val gson: Gson = GsonBuilder()
+    .registerTypeAdapter(InputClass::class.java, InputClassAdapter)
+    .create()
 
 fun main(args: Array<String>) {
-    if (args.size < 5) {
-        System.out.println("You need at least two course selections to form a schedule!")
-        exitProcess(-127)
-    }
-
-    TERM = args[0]
-
-    // convert input classes into course selections (pulling data from online)
-    val firstSelection = InputCourseSelection (
-        parseClasses(args[1]),
-        parseClasses(args[2])
-    ).toCourseSelection()
-    val secondSelection = InputCourseSelection (
-        parseClasses(args[3]),
-        parseClasses(args[4])
-    ).toCourseSelection()
-
-    val firstSchedule = HashSet<Section>()
-    val secondSchedule = HashSet<Section>()
-
-    // map their selections to their schedule
-    val selectionsMap = mapOf (
-        Pair(firstSelection, firstSchedule),
-        Pair(secondSelection, secondSchedule)
+    val inputFile = gson.fromJson(
+        InputStreamReader(FileInputStream(File("students.json"))),
+        InputStudentFile::class.java
     )
+
+    debug = inputFile.debug
+
+    System.out.println("Pulling course data...")
+
+    val schedules = inputFile.students.map { it.toSchedule() }.toMutableList()
+
+    createSchedules(schedules)
+
+    term = "2"
+
+    createSchedules(schedules)
+}
+
+fun createSchedules(schedules: MutableList<Schedule>) {
+    System.out.println("\nCreating Term $term Schedules\n")
 
     val courseSet = HashSet<Course>()
 
-    selectionsMap.forEach { selection, _ ->
-        courseSet.addAll(selection.requiredCourses)
-        courseSet.addAll(selection.electives)
+    schedules.forEach { schedule ->
+        courseSet.addAll(schedule.requiredCourses)
+        courseSet.addAll(schedule.electives)
+    }
+
+    courseSet.forEach {
+        it.sections.entries.removeIf {
+            it.value.status.toLowerCase().contains("cancelled")
+        }
     }
 
     courseSet.sortedByDescending { course ->
-        val required = when (selectionsMap.keys.any { it.requiredCourses.contains(course) }) {
+        val required = when (schedules.any { it.requiredCourses.contains(course) }) {
             true -> 1
             false -> 0
         }
-        val sharedBy = selectionsMap.keys.count {
+        val sharedBy = schedules.count {
             it.requiredCourses.contains(course) || it.electives.contains(course)
         }
         val sectionsByActivity = course.sections.values.groupBy { it.activity }
@@ -65,34 +74,41 @@ fun main(args: Array<String>) {
         }
         val score = required * .4 + weightedSections + (sharedBy * .125)
 
-        System.out.println("${course.subjectCode} ${course.courseNumber} - $score ($required,$averageSectionsPerActivity,$sharedBy)")
+        if (debug) {
+            System.out.println("${course.subjectCode} ${course.courseNumber} - $score ($required,$averageSectionsPerActivity,$sharedBy)")
+        }
 
         score
     }.forEach { course ->
-        val schedules = selectionsMap.filter { entry ->
-            (entry.key.requiredCourses.contains(course) || entry.value.groupBy { "${it.subjectCode} ${it.courseNumber}" }.size < 5) &&
-            (entry.key.electives.contains(course) || entry.key.requiredCourses.contains(course))
+        val applicableSchedules = schedules.filter { entry ->
+            val registeredRequiredCourses = entry.requiredCourses.count { c ->
+                entry.classes.any { it.subjectCode == c.subjectCode && it.courseNumber == c.courseNumber }
+            }
+            val requiredLeft = entry.requiredCourses.size - registeredRequiredCourses
+
+            (entry.requiredCourses.contains(course) || entry.classes.groupBy { "${it.subjectCode} ${it.courseNumber}" }.size < (5 - requiredLeft)) &&
+                    (entry.electives.contains(course) || entry.requiredCourses.contains(course))
         }
 
-        scheduleCourse(course, schedules.values.toMutableList())
+        scheduleCourse(course, applicableSchedules.toMutableList())
     }
 
-    selectionsMap.forEach { _, schedule ->
-        System.out.println("Schedule:")
+    schedules.forEach { schedule ->
+        System.out.println("${schedule.name}'s Term $term Schedule:")
 
         System.out.println("| TIME | MONDAY | TUESDAY | WEDNESDAY | THURSDAY | FRIDAY |")
         System.out.println("|------|--------|---------|-----------|----------|--------|")
 
         // start of day
-        var time = 7
+        var time = schedule.classes.map { it.startMinutes / 60 }.min()!!
         // end of day
-        val max = 17
+        val max = schedule.classes.map { it.endMinutes / 60 }.max()!!
 
         while (time <= max) {
             val builder = StringBuilder("|$time:00|")
 
             for (day in DayOfWeek.values()) {
-                val section = schedule.find { it.days.contains(day) && it.sectionRange.contains(time * 60) }
+                val section = schedule.classes.find { it.days.contains(day) && it.sectionRange.contains(time * 60) }
 
                 if (section != null) {
                     builder.append(section.section)
@@ -109,7 +125,7 @@ fun main(args: Array<String>) {
 
 val sectionFilters = listOf("waiting list", "web-oriented course", "distance education")
 
-fun scheduleCourse(course: Course, schedules: MutableCollection<MutableSet<Section>>) {
+fun scheduleCourse(course: Course, schedules: MutableCollection<Schedule>) {
     val sectionsByActivity = course.sections.values.groupBy { it.activity }
 
     for (entry in sectionsByActivity) {
@@ -118,11 +134,18 @@ fun scheduleCourse(course: Course, schedules: MutableCollection<MutableSet<Secti
         }
     }
 
-    System.out.println("Scheduled ${course.subjectCode} ${course.courseNumber}")
+    schedules.forEach {
+        // remove the course from possible options if its an elective
+        it.electives.remove(course)
+    }
+
+    if (debug) {
+        System.out.println("Scheduled ${course.subjectCode} ${course.courseNumber}")
+    }
 }
 
 // returns whether to stop attempting to schedule this course
-fun scheduleActivity(course: Course, activity: String, sections: List<Section>, schedules: MutableCollection<MutableSet<Section>>): Boolean {
+fun scheduleActivity(course: Course, activity: String, sections: List<Section>, schedules: MutableCollection<Schedule>): Boolean {
     // ignore any irrelevant activities
     if (sectionFilters.contains(activity.toLowerCase())) {
         return false
@@ -136,14 +159,14 @@ fun scheduleActivity(course: Course, activity: String, sections: List<Section>, 
 
     val foundSections = sections
         // search only for the correct term and when it's not in the Standard Time Table
-        .filter { it.term.contains(TERM) && it.status != "STT" }
+        .filter { it.term.contains(term) && it.status != "STT" }
         // ensure the section does not intersect with any of the schedules
         .filter { section ->
-            schedules.all { schedule -> schedule.none { it intersects section } }
+            schedules.all { schedule -> schedule.classes.none { it intersects section } }
         }
         // sort by a "proximity" value that encourages classes to be close to each other
         // experiment with this, sometimes it produces better/worse results
-        .sortedBy { section -> schedules.map { schedule -> calculateProximity(section, schedule) }.sum() }
+        .sortedBy { section -> schedules.map { schedule -> calculateProximity(section, schedule.classes) }.sum() }
     // find the one with the lowest proximity value
     val foundSection = foundSections.firstOrNull()
 
@@ -161,18 +184,20 @@ fun scheduleActivity(course: Course, activity: String, sections: List<Section>, 
     // remove the course as a whole
     if (foundSection == null) {
         schedules.forEach { schedule ->
-            schedule.removeIf {
+            schedule.classes.removeIf {
                 it.subjectCode == course.subjectCode && it.courseNumber == course.courseNumber
             }
         }
 
-        System.out.println("Had to remove ${course.subjectCode} ${course.courseNumber}")
+        if (debug) {
+            System.out.println("Had to remove ${course.subjectCode} ${course.courseNumber}")
+        }
         return true
     }
 
     // add the section to schedules
     schedules.forEach {
-        it.add(foundSection)
+        it.classes.add(foundSection)
     }
 
     return false
@@ -189,12 +214,6 @@ fun calculateProximity(section: Section, schedule: Set<Section>): Int {
         val otherSections = schedule.filter { it.days.contains(day) }
         var earlierSection: Section? = null
         var laterSection: Section? = null
-
-        // if there are no sections, reduce proximity to give it a "bonus"
-        if (otherSections.isEmpty()) {
-            proximity -= 150
-            return@forEach
-        }
 
         otherSections.forEach {
             // does this section run earlier than the input?
@@ -221,26 +240,10 @@ fun calculateProximity(section: Section, schedule: Set<Section>): Int {
             true -> 0
             false -> laterSection!!.startMinutes - section.endMinutes
         }
+        val sum = earlyDistance + laterDistance
 
-        proximity += earlyDistance + laterDistance
+        proximity += sum
     }
 
     return proximity
-}
-
-/**
- * Takes a format of (subject),(course);(subject),(course) and converts to a list of InputClass
- *
- * e.g. ENGL,100;MATH,100;CPSC,110
- */
-fun parseClasses(input: String): List<InputClass> {
-    return input.split(";").mapNotNull {
-        val elements = it.split(",")
-
-        if (elements.size != 2) {
-            return@mapNotNull null
-        }
-
-        InputClass(elements[0], elements[1])
-    }
 }
