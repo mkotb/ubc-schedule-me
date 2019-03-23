@@ -13,7 +13,8 @@ val factors = mapOf (
     Pair("early_preference", EarlyClassesPreference::class.java),
     Pair("late_preference", LateClassesPreference::class.java),
     Pair("early_filter", EarlyFilter::class.java),
-    Pair("late_filter", LateFilter::class.java)
+    Pair("late_filter", LateFilter::class.java),
+    Pair("short_day", ShortDayPreference::class.java)
 )
 
 abstract class SchedulingFactor {
@@ -50,12 +51,42 @@ class DaysPreference (
     }
 }
 
+class ShortDayPreference: SchedulingFactor() {
+    companion object {
+        const val UPPER_BOUND = (9 * 5)
+    }
+
+    override fun score(schedule: Schedule, section: Section): Double {
+        var dayLength = 0.0
+
+        DayOfWeek.values().forEach { day ->
+            val sections = schedule.classes.filter { it.days.contains(day) }
+            var start = sections.map { it.startMinutes / 60 }.min() ?: 0
+            var end = sections.map { it.endMinutes / 60 }.max() ?: 0
+
+            if (section.days.contains(day)) {
+                if (section.startMinutes < start) {
+                    start = section.startMinutes
+                }
+
+                if (section.endMinutes > end) {
+                    end = section.endMinutes
+                }
+            }
+
+            dayLength += (end - start)
+        }
+
+        return dayLength / UPPER_BOUND
+    }
+}
+
 // prefers classes that are close to each other
-class ProximityFilter(
+class ProximityFilter (
     val punishHourBreaks: Boolean = false
 ): SchedulingFactor() {
     companion object {
-        const val UPPER_BOUND = (3 * 60).toDouble()
+        const val UPPER_BOUND = 1000.0
     }
 
     init {
@@ -105,9 +136,13 @@ class ProximityFilter(
                 proximity -= 120
             }
 
-            if (sum == 60 && punishHourBreaks) {
-                proximity += 120
+            if ((earlyDistance == 60 || laterDistance == 60) && punishHourBreaks) {
+                proximity += 60
             }
+        }
+
+        if (proximity < 0) {
+            return 0.0
         }
 
         return Math.max(0.0, (UPPER_BOUND - proximity) / UPPER_BOUND)

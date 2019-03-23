@@ -19,6 +19,10 @@ data class Schedule (
             true -> firstTermClasses
             false -> secondTermClasses
         }
+    val startOfDay
+        get() = classes.map { it.startMinutes / 60 }.min()!!
+    val endOfDay
+        get() = classes.map { it.endMinutes / 60 }.max()!!
 
     fun score(section: Section): Double {
         return schedulingFactors.sumByDouble { it.score(this, section) }
@@ -26,5 +30,9 @@ data class Schedule (
 
     fun filter(section: Section): Boolean {
         return schedulingFactors.all { it.filter(this, section) }
+    }
+
+    fun hasSelected(course: Course): Boolean {
+        return requiredCourses.contains(course) || electives.contains(course)
     }
 }

@@ -44,10 +44,15 @@ fun createSchedules(schedules: MutableList<Schedule>) {
     System.out.println("\nCreating Term $term Schedules\n")
 
     val courseSet = HashSet<Course>()
+    val requiredCourses = HashSet<Course>()
+    val electives = HashSet<Course>()
 
     schedules.forEach { schedule ->
         courseSet.addAll(schedule.requiredCourses)
         courseSet.addAll(schedule.electives)
+
+        requiredCourses.addAll(schedule.requiredCourses)
+        electives.addAll(schedule.electives)
     }
 
     courseSet.forEach { course ->
@@ -64,16 +69,22 @@ fun createSchedules(schedules: MutableList<Schedule>) {
         }
     }
 
-    courseSet.sortedByDescending { course ->
-        // do any of the schedules require this course?
-        val required = when (schedules.any { it.requiredCourses.contains(course) }) {
-            true -> 1
-            false -> 0
-        }
+    fun findApplicableSchedules(course: Course): MutableList<Schedule> {
+        return schedules.filter { entry ->
+            val registeredRequiredCourses = entry.requiredCourses.count { c ->
+                entry.classes.any { it.subjectCode == c.subjectCode && it.courseNumber == c.courseNumber }
+            }
+            val requiredLeft = entry.requiredCourses.size - registeredRequiredCourses
 
+            (entry.requiredCourses.contains(course) || entry.classes.groupBy { "${it.subjectCode} ${it.courseNumber}" }.size < (5 - requiredLeft)) &&
+                    (entry.hasSelected(course))
+        }.toMutableList()
+    }
+
+    requiredCourses.sortedByDescending { course ->
         // how many schedules have this course?
         val sharedBy = schedules.count {
-            it.requiredCourses.contains(course) || it.electives.contains(course)
+            it.hasSelected(course)
         }
 
         val longestSection = (course.sections.values.maxBy { it.startMinutes }?.duration ?: 0) / 60
@@ -96,25 +107,34 @@ fun createSchedules(schedules: MutableList<Schedule>) {
 
         // create a score to find the priority
         // of scheduling this course
-        val score = required * .3 + (weightedSections * 2) + (sharedBy * .1) + (longestSection * .2)
+        val score = (weightedSections) + (sharedBy * .15) + (longestSection * .05)
 
         if (debug) {
-            System.out.println("${course.subjectCode} ${course.courseNumber} - $score ($required,$weightedSections,$sharedBy,$longestSection)")
+            System.out.println("${course.subjectCode} ${course.courseNumber} - $score ($weightedSections,$sharedBy,$longestSection)")
         }
 
         score
     }.forEach { course ->
-        val applicableSchedules = schedules.filter { entry ->
-            val registeredRequiredCourses = entry.requiredCourses.count { c ->
-                entry.classes.any { it.subjectCode == c.subjectCode && it.courseNumber == c.courseNumber }
-            }
-            val requiredLeft = entry.requiredCourses.size - registeredRequiredCourses
+        scheduleCourse(course, findApplicableSchedules(course))
+    }
 
-            (entry.requiredCourses.contains(course) || entry.classes.groupBy { "${it.subjectCode} ${it.courseNumber}" }.size < (5 - requiredLeft)) &&
-                    (entry.electives.contains(course) || entry.requiredCourses.contains(course))
+    electives.sortedByDescending { course ->
+        val relevantSchedules = findApplicableSchedules(course)
+        // how many schedules have this course?
+        val sharedBy = relevantSchedules.size
+        val averageScore = relevantSchedules.sumByDouble { schedule ->
+            schedule.classes.sumByDouble { schedule.score(it) / schedule.schedulingFactors.size } / schedule.classes.size
+        } / relevantSchedules.size
+
+        val score = (sharedBy * .2) + averageScore
+
+        if (debug) {
+            System.out.println("${course.subjectCode} ${course.courseNumber} - $score ($sharedBy,$averageScore)")
         }
 
-        scheduleCourse(course, applicableSchedules.toMutableList())
+        score
+    }.forEach { course ->
+        scheduleCourse(course, findApplicableSchedules(course))
     }
 
     schedules.forEach { schedule ->
@@ -123,16 +143,14 @@ fun createSchedules(schedules: MutableList<Schedule>) {
         System.out.println("| TIME | MONDAY | TUESDAY | WEDNESDAY | THURSDAY | FRIDAY |")
         System.out.println("|------|--------|---------|-----------|----------|--------|")
 
-        // start of day
-        var time = schedule.classes.map { it.startMinutes / 60 }.min()!!
-        // end of day
-        val max = schedule.classes.map { it.endMinutes / 60 }.max()!!
+        var time = schedule.startOfDay
+        val max = schedule.endOfDay
 
         while (time <= max) {
             val builder = StringBuilder("|$time:00|")
 
             for (day in DayOfWeek.values()) {
-                val section = schedule.classes.find { it.days.contains(day) && it.sectionRange.contains(time * 60) }
+                val section = schedule.classes.find { it.days.contains(day) && (time * 60) in it.startMinutes..(it.endMinutes - 1) }
 
                 if (section != null) {
                     builder.append(section.section)
@@ -210,7 +228,7 @@ fun scheduleActivity(course: Course, activity: String, sections: List<Section>, 
         }
 
         if (debug) {
-            System.out.println("Had to remove ${course.subjectCode} ${course.courseNumber}")
+            System.out.println("Had to remove ${course.subjectCode} ${course.courseNumber} $activity")
         }
         return true
     }

@@ -43,9 +43,6 @@ class Section (
         get() = parseTime(end)
     val duration
         get() = endMinutes - startMinutes
-    // range of time from start to end
-    val sectionRange
-        get() = IntRange(startMinutes, endMinutes - 1)
 
     /**
      * Checks if another section intersects by
@@ -57,10 +54,10 @@ class Section (
      */
     infix fun intersects(other: Section): Boolean {
         val otherDays = other.days
-        val ourRange = (sectionRange.contains(other.startMinutes) || sectionRange.contains(other.endMinutes))
-        val theirRange = (other.sectionRange.contains(startMinutes) || other.sectionRange.contains(endMinutes))
+        val ours = other.startMinutes in startMinutes..(endMinutes - 1)
+        val theirs = startMinutes in other.startMinutes..(other.endMinutes - 1)
 
-        return term == other.term && days.any { otherDays.contains(it) } && (ourRange || theirRange)
+        return term == other.term && days.any { otherDays.contains(it) } && (ours || theirs)
     }
 
     private fun parseTime(time: String): Int {
