@@ -1,5 +1,6 @@
 package com.mkotb.scheduler
 
+import java.lang.NumberFormatException
 import java.time.DayOfWeek
 
 val daysMap = run {
@@ -40,6 +41,8 @@ class Section (
     // minutes into the day a class ends
     val endMinutes
         get() = parseTime(end)
+    val duration
+        get() = endMinutes - startMinutes
     // range of time from start to end
     val sectionRange
         get() = IntRange(startMinutes, endMinutes - 1)
@@ -63,7 +66,11 @@ class Section (
     private fun parseTime(time: String): Int {
         val elements = time.split(":")
 
-        return elements[0].toInt() * 60 + elements[1].toInt()
+        return try {
+            elements[0].toInt() * 60 + elements[1].toInt()
+        } catch (ex: NumberFormatException) {
+            0
+        }
     }
 }
 

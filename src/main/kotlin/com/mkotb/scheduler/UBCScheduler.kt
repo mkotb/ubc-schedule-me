@@ -18,6 +18,7 @@ const val BASE_COURSE_URL = "$BASE_URL/cs/courseschedule?tname=subj-course&dept=
 const val BASE_SECTION_URL = "$BASE_URL/cs/courseschedule?pname=subjarea&tname=subj-section&dept=%s&course=%s&section=%s&sessyr=$CURRENT_YEAR&sesscd=$CURRENT_SESSION"
 val gson: Gson = GsonBuilder()
     .registerTypeAdapter(InputClass::class.java, InputClassAdapter)
+    .registerTypeAdapter(SchedulingFactor::class.java, SchedulingFactorDeserializer)
     .create()
 
 fun main(args: Array<String>) {
@@ -49,33 +50,56 @@ fun createSchedules(schedules: MutableList<Schedule>) {
         courseSet.addAll(schedule.electives)
     }
 
-    courseSet.forEach {
-        it.sections.entries.removeIf {
-            it.value.status.toLowerCase().contains("cancelled")
+    courseSet.forEach { course ->
+        course.sections.entries.removeIf { entry ->
+            entry.value.status.toLowerCase().contains("cancelled") ||
+                    schedules.all { schedule -> schedule.filter(entry.value) }
+        }
+    }
+
+    fun safeDivision(dividend: Double, divisor: Double): Double {
+        return when (divisor == 0.0) {
+            true -> 0.0
+            false -> dividend / divisor
         }
     }
 
     courseSet.sortedByDescending { course ->
+        // do any of the schedules require this course?
         val required = when (schedules.any { it.requiredCourses.contains(course) }) {
             true -> 1
             false -> 0
         }
+
+        // how many schedules have this course?
         val sharedBy = schedules.count {
             it.requiredCourses.contains(course) || it.electives.contains(course)
         }
-        val sectionsByActivity = course.sections.values.groupBy { it.activity }
-        val averageSectionsPerActivity = when (sectionsByActivity.isEmpty()) {
-            true -> 0
-            false -> sectionsByActivity.entries.sumBy { it.value.size } / sectionsByActivity.size
-        }
-        val weightedSections = when (averageSectionsPerActivity == 0) {
-            true -> 0.0
-            false -> (1.0 / averageSectionsPerActivity)
-        }
-        val score = required * .4 + weightedSections + (sharedBy * .125)
+
+        val longestSection = (course.sections.values.maxBy { it.startMinutes }?.duration ?: 0) / 60
+
+        val sectionsByActivity = course.sections.values
+            // ignore irrelevant activities
+            .filter { !sectionFilters.contains(it.activity) }
+            .groupBy { it.activity }
+
+        // find the average sections per activity
+        // which roughly tells us the "difficulty"
+        // of scheduling this course
+        val averageSectionsPerActivity = safeDivision(
+            sectionsByActivity.entries.sumBy { it.value.size }.toDouble(),
+            sectionsByActivity.size.toDouble()
+        )
+        // make this a value between 0-1 where a higher averageSectionsPerActivity
+        // reduces the priority of the course being scheduled
+        val weightedSections = safeDivision(1.0, averageSectionsPerActivity)
+
+        // create a score to find the priority
+        // of scheduling this course
+        val score = required * .3 + (weightedSections * 2) + (sharedBy * .1) + (longestSection * .2)
 
         if (debug) {
-            System.out.println("${course.subjectCode} ${course.courseNumber} - $score ($required,$averageSectionsPerActivity,$sharedBy)")
+            System.out.println("${course.subjectCode} ${course.courseNumber} - $score ($required,$weightedSections,$sharedBy,$longestSection)")
         }
 
         score
@@ -164,18 +188,14 @@ fun scheduleActivity(course: Course, activity: String, sections: List<Section>, 
         .filter { section ->
             schedules.all { schedule -> schedule.classes.none { it intersects section } }
         }
-        // sort by a "proximity" value that encourages classes to be close to each other
-        // experiment with this, sometimes it produces better/worse results
-        .sortedBy { section -> schedules.map { schedule -> calculateProximity(section, schedule.classes) }.sum() }
+        .sortedByDescending { section -> schedules.sumByDouble { schedule -> schedule.score(section) }}
     // find the one with the lowest proximity value
     val foundSection = foundSections.firstOrNull()
 
     if (foundSection == null && schedules.size > 1) {
         // try and schedule it without other people
-        schedules.forEach {
-            if (scheduleActivity(course, activity, sections, Collections.singleton(it))) {
-                schedules.remove(it)
-            }
+        schedules.removeIf {
+            scheduleActivity(course, activity, sections, Collections.singleton(it))
         }
         return false
     }
@@ -201,49 +221,4 @@ fun scheduleActivity(course: Course, activity: String, sections: List<Section>, 
     }
 
     return false
-}
-
-/**
- * Calculates how close are this section is to its neighbours
- */
-fun calculateProximity(section: Section, schedule: Set<Section>): Int {
-    var proximity = 0
-
-    section.days.forEach { day ->
-        // find other sections on that day
-        val otherSections = schedule.filter { it.days.contains(day) }
-        var earlierSection: Section? = null
-        var laterSection: Section? = null
-
-        otherSections.forEach {
-            // does this section run earlier than the input?
-            val earlier = it.startMinutes < section.startMinutes
-
-            // is it closer to the input than our previous value?
-            if (earlier && (earlierSection == null || it.startMinutes > earlierSection!!.startMinutes)) {
-                earlierSection = it
-            }
-
-            // is it closer to the input than our previous laterSection value?
-            if (!earlier && (laterSection == null || it.startMinutes < laterSection!!.startMinutes)) {
-                laterSection = it
-            }
-        }
-
-        // the time between the end of the earlier section and the start of the input
-        val earlyDistance = when (earlierSection == null) {
-            true -> 0
-            false -> section.startMinutes - earlierSection!!.endMinutes
-        }
-        // the time between the end of the input and start of the later section
-        val laterDistance = when (laterSection == null) {
-            true -> 0
-            false -> laterSection!!.startMinutes - section.endMinutes
-        }
-        val sum = earlyDistance + laterDistance
-
-        proximity += sum
-    }
-
-    return proximity
 }

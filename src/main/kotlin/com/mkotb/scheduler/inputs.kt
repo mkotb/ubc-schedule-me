@@ -15,18 +15,19 @@ data class InputCourseSelection (
     val name: String,
     val requiredFirstCourses: List<InputClass>,
     val requiredSecondCourses: List<InputClass>,
-    val electives: List<InputClass>
+    val electives: List<InputClass>,
+    val factors: List<SchedulingFactor>?
 ) {
     fun toSchedule(): Schedule {
         System.out.println("$name's required courses...")
 
-        val first = requiredFirstCourses.mapNotNull { it.toCourse() }
-        val second = requiredSecondCourses.mapNotNull { it.toCourse() }
+        val first = requiredFirstCourses.map { it.toCourse() }
+        val second = requiredSecondCourses.map { it.toCourse() }
 
         System.out.println("Done!")
         System.out.println("$name's electives...")
 
-        val pulledElectives = electives.mapNotNull { it.toCourse() }.toMutableList()
+        val pulledElectives = electives.map { it.toCourse() }.toMutableList()
 
         System.out.println("Done!")
 
@@ -34,7 +35,8 @@ data class InputCourseSelection (
             name,
             first,
             second,
-            pulledElectives
+            pulledElectives,
+            factors ?: emptyList()
         )
     }
 }

@@ -4,7 +4,8 @@ data class Schedule (
     val name: String,
     val requiredFirstCourses: List<Course>,
     val requiredSecondCourses: List<Course>,
-    val electives: MutableList<Course>
+    val electives: MutableList<Course>,
+    val schedulingFactors: List<SchedulingFactor>
 ) {
     val firstTermClasses = HashSet<Section>()
     val secondTermClasses = HashSet<Section>()
@@ -18,4 +19,12 @@ data class Schedule (
             true -> firstTermClasses
             false -> secondTermClasses
         }
+
+    fun score(section: Section): Double {
+        return schedulingFactors.sumByDouble { it.score(this, section) }
+    }
+
+    fun filter(section: Section): Boolean {
+        return schedulingFactors.all { it.filter(this, section) }
+    }
 }
