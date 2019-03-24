@@ -9,18 +9,21 @@ import java.time.DayOfWeek
 val factors = mapOf (
     Pair("days_filter", DayFilter::class.java),
     Pair("days_preference", DaysPreference::class.java),
-    Pair("proximity", ProximityFilter::class.java),
+    Pair("proximity", ProximityFactor::class.java),
     Pair("early_preference", EarlyClassesPreference::class.java),
     Pair("late_preference", LateClassesPreference::class.java),
     Pair("early_filter", EarlyFilter::class.java),
     Pair("late_filter", LateFilter::class.java),
-    Pair("short_day", ShortDayPreference::class.java)
+    Pair("short_day", ShortDayPreference::class.java),
+    Pair("no_torture", NoTorturePreference::class.java),
+    Pair("instructor_filter", InstructorFilter::class.java),
+    Pair("instructor_preference", InstructorPreference::class.java)
 )
 
 abstract class SchedulingFactor {
     var weight = 1
 
-    open fun filter(schedule: Schedule, section: Section): Boolean = true
+    open fun filter(schedule: Schedule, section: Section): Boolean = false
     // scores a section between 0-1
     open fun score(schedule: Schedule, section: Section): Double = 0.0
 }
@@ -39,7 +42,7 @@ class DayFilter (
     val days: List<DayOfWeek>
 ): SchedulingFactor() {
     override fun filter(schedule: Schedule, section: Section): Boolean {
-        return section.days.none { days.contains(it) }
+        return section.days.any { days.contains(it) }
     }
 }
 
@@ -77,12 +80,12 @@ class ShortDayPreference: SchedulingFactor() {
             dayLength += (end - start)
         }
 
-        return dayLength / UPPER_BOUND
+        return (dayLength / 60) / UPPER_BOUND
     }
 }
 
 // prefers classes that are close to each other
-class ProximityFilter (
+class ProximityFactor (
     val punishHourBreaks: Boolean = false
 ): SchedulingFactor() {
     companion object {
@@ -137,7 +140,7 @@ class ProximityFilter (
             }
 
             if ((earlyDistance == 60 || laterDistance == 60) && punishHourBreaks) {
-                proximity += 60
+                proximity += 90
             }
         }
 
@@ -164,7 +167,7 @@ class EarlyFilter (
     val earliestHour: Int
 ): SchedulingFactor() {
     override fun filter(schedule: Schedule, section: Section): Boolean {
-        return section.startMinutes > (earliestHour * 60)
+        return section.startMinutes < (earliestHour * 60)
     }
 }
 
@@ -185,5 +188,85 @@ class LateFilter (
 ): SchedulingFactor() {
     override fun filter(schedule: Schedule, section: Section): Boolean {
         return section.startMinutes > (latestHour * 60)
+    }
+}
+
+class NoTorturePreference: SchedulingFactor() {
+    companion object {
+        const val UPPER_BOUND = (2 * 3)
+    }
+
+    override fun score(schedule: Schedule, section: Section): Double {
+        var blocksSum = 0.0
+
+        section.days.forEach { day ->
+            // find all classes is in the day
+            val classes = schedule.classes.filter { it.days.contains(day) }.toMutableList().apply {
+                add(section)
+                sortBy { it.startMinutes }
+            }
+
+            // find the furthest continuous class in a given direction
+            // true means earlier direction, false means later direction
+            fun findFurthest(direction: Boolean, index: Int): Section {
+                // find the index of the next class
+                val furtherIndex = index + if (direction) -1 else 1
+                // get its element
+                val further = classes.getOrNull(furtherIndex)
+                val current = classes[index]
+
+                // if it's null, we hit the end of the list
+                // so the current index is the furthest
+                if (further == null) {
+                    return current
+                }
+
+                /*
+                 * get the times to compare it with
+                 *
+                 * if we are going earlier, look at the junction when the further class ends
+                 * and the current class begins
+                 *
+                 * if we are going later, look at the junction when the further class begins and
+                 * the current class ends.
+                 */
+                val furtherTime = if (direction) further.endMinutes else further.startMinutes
+                val currentTime = if (direction) current.startMinutes else current.endMinutes
+
+                // check for continuity
+                if (furtherTime != currentTime) {
+                    return current
+                }
+
+                // keep moving in the direction with further being the new current
+                return findFurthest(direction, furtherIndex)
+            }
+
+            val index = classes.indexOf(section)
+            val upper = findFurthest(true, index)
+            val lower = findFurthest(false, index)
+
+            blocksSum += (lower.endMinutes - upper.startMinutes) / 60.0
+        }
+
+        blocksSum -= (3 * 3)
+        return Math.max(blocksSum, 0.0) / UPPER_BOUND
+    }
+}
+
+class InstructorFilter (
+    val instructors: List<String>
+): SchedulingFactor() {
+    override fun filter(schedule: Schedule, section: Section): Boolean {
+        return instructors.contains(section.instructor?.toLowerCase())
+    }
+}
+
+class InstructorPreference (
+    val instructors: List<String>
+): SchedulingFactor() {
+    override fun score(schedule: Schedule, section: Section): Double {
+        val instructor = section.instructor
+        return if (instructor != null && instructors.contains(instructor.toLowerCase())) 1.0 else 0.0
     }
 }

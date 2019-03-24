@@ -28,6 +28,7 @@ class Section (
     val start: String,
     val end: String,
     val comments: String,
+    val instructor: String?,
     val totalRemaining: Int,
     val currentlyRegistered: Int,
     val generalRemaining: Int,

@@ -106,15 +106,16 @@ fun resolveSection(subject: String, course: String, element: Element): Section? 
     val end = elements[7].text()
 
     // resolve the section info page
-    val doc = Jsoup.connect(String.format(BASE_SECTION_URL, subject, course, sectionName.text())).get()
+    val doc = Jsoup.connect(String.format(BASE_SECTION_URL, subject, course, sectionName.text().split(" ").last())).get()
     val content = doc.selectFirst(".content")
     // find all tables in the content
     val tables = content.select("table")
     // get seating information if available (as an array of entries in a row of a table)
+    val instructor = tables.getOrNull(2)?.selectFirst("a")?.text()
     val seatingTableEntries = tables.getOrNull(3)?.selectFirst("tbody")?.children()
 
     fun findNumber(element: Int): Int {
-        return seatingTableEntries?.get(element)?.selectFirst("strong")?.text()?.toIntOrNull() ?: 0
+        return seatingTableEntries?.getOrNull(element)?.selectFirst("strong")?.text()?.toIntOrNull() ?: 0
     }
 
     val totalSeatsRemaining = findNumber(0)
@@ -122,13 +123,12 @@ fun resolveSection(subject: String, course: String, element: Element): Section? 
     val generalSeatsRemaining = findNumber(2)
     val restrictedSeatsRemaining = findNumber(3)
 
-
     return Section (
         subject, course, status,
         sectionName.text(), sectionLink,
         activity, term, days, start,
-        end, comments, totalSeatsRemaining,
-        seatsRegistered, generalSeatsRemaining,
-        restrictedSeatsRemaining
+        end, comments, instructor,
+        totalSeatsRemaining, seatsRegistered,
+        generalSeatsRemaining, restrictedSeatsRemaining
     )
 }

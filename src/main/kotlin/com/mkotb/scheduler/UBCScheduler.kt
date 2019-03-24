@@ -58,35 +58,40 @@ fun createSchedules(schedules: MutableList<Schedule>) {
     courseSet.forEach { course ->
         course.sections.entries.removeIf { entry ->
             entry.value.status.toLowerCase().contains("cancelled") ||
-                    schedules.all { schedule -> schedule.filter(entry.value) }
+                    schedules.any { schedule -> schedule.filter(entry.value) }
         }
     }
 
+    // performs division but returns 0 when divisor == 0
     fun safeDivision(dividend: Double, divisor: Double): Double {
-        return when (divisor == 0.0) {
-            true -> 0.0
-            false -> dividend / divisor
-        }
+        return if (divisor == 0.0) 0.0 else dividend / divisor
     }
 
+    // finds all schedules which can register this course
     fun findApplicableSchedules(course: Course): MutableList<Schedule> {
         return schedules.filter { entry ->
+            // how many required courses has this schedule registered?
             val registeredRequiredCourses = entry.requiredCourses.count { c ->
                 entry.classes.any { it.subjectCode == c.subjectCode && it.courseNumber == c.courseNumber }
             }
+            // how many of them are left?
             val requiredLeft = entry.requiredCourses.size - registeredRequiredCourses
 
+            // A. Have this schedule selected this course?
+            // B. is this a required course? or do we have spaces for electives?
             (entry.requiredCourses.contains(course) || entry.classes.groupBy { "${it.subjectCode} ${it.courseNumber}" }.size < (5 - requiredLeft)) &&
                     (entry.hasSelected(course))
         }.toMutableList()
     }
 
+    // first register our required courses
     requiredCourses.sortedByDescending { course ->
         // how many schedules have this course?
         val sharedBy = schedules.count {
             it.hasSelected(course)
         }
 
+        // what is the longest section (in hours)
         val longestSection = (course.sections.values.maxBy { it.startMinutes }?.duration ?: 0) / 60
 
         val sectionsByActivity = course.sections.values
@@ -118,12 +123,20 @@ fun createSchedules(schedules: MutableList<Schedule>) {
         scheduleCourse(course, findApplicableSchedules(course))
     }
 
+    // register electives
     electives.sortedByDescending { course ->
         val relevantSchedules = findApplicableSchedules(course)
         // how many schedules have this course?
         val sharedBy = relevantSchedules.size
+        // the average score for each section for each schedule
         val averageScore = relevantSchedules.sumByDouble { schedule ->
-            schedule.classes.sumByDouble { schedule.score(it) / schedule.schedulingFactors.size } / schedule.classes.size
+            schedule.classes.sumByDouble { section ->
+                val factors = schedule.schedulingFactors
+                    .associateWith { it.score(schedule, section) }
+                    .filter { it.value != 0.0 }
+
+                factors.values.sum() / factors.size
+            } / schedule.classes.size
         } / relevantSchedules.size
 
         val score = (sharedBy * .2) + averageScore

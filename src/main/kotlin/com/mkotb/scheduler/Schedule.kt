@@ -29,7 +29,9 @@ data class Schedule (
     }
 
     fun filter(section: Section): Boolean {
-        return schedulingFactors.all { it.filter(this, section) }
+        return schedulingFactors.any {
+            it.filter(this, section)
+        }
     }
 
     fun hasSelected(course: Course): Boolean {
