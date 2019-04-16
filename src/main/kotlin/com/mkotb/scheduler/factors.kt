@@ -1,15 +1,16 @@
 package com.mkotb.scheduler
 
-import com.google.gson.JsonDeserializationContext
-import com.google.gson.JsonDeserializer
-import com.google.gson.JsonElement
-import java.lang.reflect.Type
+import com.mkotb.scheduler.db.BuildingTravelTime
+import com.mkotb.scheduler.db.Section
+import com.mkotb.scheduler.db.SectionLocation
+import com.squareup.moshi.adapters.PolymorphicJsonAdapterFactory
 import java.time.DayOfWeek
 
 val factors = mapOf (
     Pair("days_filter", DayFilter::class.java),
     Pair("days_preference", DaysPreference::class.java),
     Pair("proximity", ProximityFactor::class.java),
+    Pair("distance", DistanceFactor::class.java),
     Pair("early_preference", EarlyClassesPreference::class.java),
     Pair("late_preference", LateClassesPreference::class.java),
     Pair("early_filter", EarlyFilter::class.java),
@@ -21,6 +22,18 @@ val factors = mapOf (
 )
 
 abstract class SchedulingFactor {
+    companion object {
+        val jsonFactory = run {
+            var f = PolymorphicJsonAdapterFactory.of(SchedulingFactor::class.java, "name")
+
+            factors.forEach { key, clazz ->
+                f = f.withSubtype(clazz, key)
+            }
+
+            f
+        }
+    }
+
     var weight = 1
 
     open fun filter(schedule: Schedule, section: Section): Boolean = false
@@ -28,16 +41,7 @@ abstract class SchedulingFactor {
     open fun score(schedule: Schedule, section: Section): Double = 0.0
 }
 
-object SchedulingFactorDeserializer: JsonDeserializer<SchedulingFactor> {
-    override fun deserialize(
-        json: JsonElement,
-        typeOfT: Type,
-        context: JsonDeserializationContext
-    ): SchedulingFactor {
-        return context.deserialize(json, factors[json.asJsonObject["name"].asString])
-    }
-}
-
+// removes any sections that are part of the days list
 class DayFilter (
     val days: List<DayOfWeek>
 ): SchedulingFactor() {
@@ -46,6 +50,7 @@ class DayFilter (
     }
 }
 
+// holds a preference for days mentioned
 class DaysPreference (
     val days: List<DayOfWeek>
 ): SchedulingFactor() {
@@ -54,6 +59,7 @@ class DaysPreference (
     }
 }
 
+// prefers sections which make the day as short as possible
 class ShortDayPreference: SchedulingFactor() {
     companion object {
         const val UPPER_BOUND = (9 * 5)
@@ -103,33 +109,17 @@ class ProximityFactor (
         section.days.forEach { day ->
             // find other sections on that day
             val otherSections = classes.filter { it.days.contains(day) }
-            var earlierSection: Section? = null
-            var laterSection: Section? = null
-
-            otherSections.forEach {
-                // does this section run earlier than the input?
-                val earlier = it.startMinutes < section.startMinutes
-
-                // is it closer to the input than our previous value?
-                if (earlier && (earlierSection == null || it.startMinutes > earlierSection!!.startMinutes)) {
-                    earlierSection = it
-                }
-
-                // is it closer to the input than our previous laterSection value?
-                if (!earlier && (laterSection == null || it.startMinutes < laterSection!!.startMinutes)) {
-                    laterSection = it
-                }
-            }
+            val (earlierSection, laterSection) = findClosestClasses(otherSections, section)
 
             // the time between the end of the earlier section and the start of the input
             val earlyDistance = when (earlierSection == null) {
                 true -> 0
-                false -> section.startMinutes - earlierSection!!.endMinutes
+                false -> section.startMinutes - earlierSection.endMinutes
             }
             // the time between the end of the input and start of the later section
             val laterDistance = when (laterSection == null) {
                 true -> 0
-                false -> laterSection!!.startMinutes - section.endMinutes
+                false -> laterSection.startMinutes - section.endMinutes
             }
             val sum = earlyDistance + laterDistance
 
@@ -152,6 +142,67 @@ class ProximityFactor (
     }
 }
 
+// prefers classes that are physically closer to each other
+// (where the walk time is shorter)
+class DistanceFactor: SchedulingFactor() {
+    companion object {
+        const val UPPER_BOUND = (15 * 60).toDouble()
+    }
+
+    override fun score(schedule: Schedule, section: Section): Double {
+        val classes = schedule.classes
+        var proximity = 0
+
+        section.days.forEach { day ->
+            val formattedDay = day.name.toLowerCase().substring(0, 3)
+            val otherSections = classes.filter { it.days.contains(day) }
+            val sectionLocation = SectionLocation.find(section, formattedDay) ?: return@forEach
+
+            val classesTravelTime = findClosestClasses(otherSections, section).toList()
+                .filterNotNull()
+                // only include classes that are adjacent to this section
+                .filter { it.startMinutes == section.endMinutes || it.endMinutes == section.startMinutes }
+                // map to the travel time of the two sections
+                .mapNotNull {
+                    val otherLocation = SectionLocation.find(it, formattedDay) ?: return@mapNotNull null
+
+                    BuildingTravelTime.find(sectionLocation.building, otherLocation.building)?.time
+                }
+
+            proximity += classesTravelTime.average().toInt()
+        }
+
+        val averageProximity = (proximity / section.days.size)
+
+        return Math.max(0.0, (UPPER_BOUND - averageProximity) / UPPER_BOUND)
+    }
+}
+
+// given a list of sections and a section, it finds the classes
+// that are above and below it
+fun findClosestClasses(sections: List<Section>, section: Section): Pair<Section?, Section?> {
+    var earlierSection: Section? = null
+    var laterSection: Section? = null
+
+    sections.forEach {
+        // does this section run earlier than the input?
+        val earlier = it.startMinutes < section.startMinutes
+
+        // is it closer to the input than our previous value?
+        if (earlier && (earlierSection == null || it.startMinutes > earlierSection!!.startMinutes)) {
+            earlierSection = it
+        }
+
+        // is it closer to the input than our previous laterSection value?
+        if (!earlier && (laterSection == null || it.startMinutes < laterSection!!.startMinutes)) {
+            laterSection = it
+        }
+    }
+
+    return Pair(earlierSection, laterSection)
+}
+
+// sets a preference for earlier classes
 class EarlyClassesPreference: SchedulingFactor() {
     companion object {
         const val MINUTES_IN_DAY = (24 * 60).toDouble()
@@ -171,6 +222,7 @@ class EarlyFilter (
     }
 }
 
+// prefers later classes
 class LateClassesPreference: SchedulingFactor() {
     companion object {
         // the latest time a class starts, assuming it's 8 PM
@@ -191,6 +243,8 @@ class LateFilter (
     }
 }
 
+// attempts to avoid classes that cause the schedule
+// to have 3 or more consecutive classes
 class NoTorturePreference: SchedulingFactor() {
     companion object {
         const val UPPER_BOUND = (2 * 3)
@@ -254,6 +308,7 @@ class NoTorturePreference: SchedulingFactor() {
     }
 }
 
+// removes any instructors in the list
 class InstructorFilter (
     val instructors: List<String>
 ): SchedulingFactor() {
@@ -262,6 +317,7 @@ class InstructorFilter (
     }
 }
 
+// prefers the instructors provided
 class InstructorPreference (
     val instructors: List<String>
 ): SchedulingFactor() {
