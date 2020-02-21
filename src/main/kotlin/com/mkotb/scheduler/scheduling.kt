@@ -81,7 +81,7 @@ fun createSchedules(schedules: MutableList<Schedule>) {
         val score = (weightedSections) + (sharedBy * .15) + (longestSection * .05)
 
         if (debug) {
-            System.out.println("${course.fullName} - $score ($weightedSections,$sharedBy,$longestSection)")
+            println("${course.fullName} - $score ($weightedSections,$sharedBy,$longestSection)")
         }
 
         score
@@ -108,7 +108,7 @@ fun createSchedules(schedules: MutableList<Schedule>) {
         val score = (sharedBy * .2) + averageScore
 
         if (debug) {
-            System.out.println("${course.fullName} - $score ($sharedBy,$averageScore)")
+            println("${course.fullName} - $score ($sharedBy,$averageScore)")
         }
 
         score
@@ -140,7 +140,7 @@ fun scheduleCourse(course: Course, schedules: MutableCollection<Schedule>) {
     }
 
     if (debug) {
-        System.out.println("Scheduled ${course.fullName}")
+        println("Scheduled ${course.fullName}")
     }
 }
 
@@ -186,7 +186,7 @@ fun scheduleActivity(course: Course, activity: String, sections: List<Section>, 
         }
 
         if (debug) {
-            System.out.println("Had to remove ${course.fullName} $activity")
+            println("Had to remove ${course.fullName} $activity")
         }
         return true
     }

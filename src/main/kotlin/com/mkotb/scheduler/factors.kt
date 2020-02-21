@@ -26,7 +26,7 @@ abstract class SchedulingFactor {
         val jsonFactory = run {
             var f = PolymorphicJsonAdapterFactory.of(SchedulingFactor::class.java, "name")
 
-            factors.forEach { key, clazz ->
+            factors.forEach { (key, clazz) ->
                 f = f.withSubtype(clazz, key)
             }
 
@@ -304,7 +304,7 @@ class NoTorturePreference: SchedulingFactor() {
         }
 
         blocksSum -= (3 * 3)
-        return Math.max(blocksSum, 0.0) / UPPER_BOUND
+        return blocksSum.coerceAtLeast(0.0) / UPPER_BOUND
     }
 }
 

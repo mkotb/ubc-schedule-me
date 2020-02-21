@@ -58,11 +58,11 @@ object ScheduleController {
 
 fun print(schedules: List<Schedule>, term: String) {
     schedules.forEach { schedule ->
-        System.out.println("${schedule.name}'s Term $term Schedule:")
+        println("${schedule.name}'s Term $term Schedule:")
         schedule.currentTerm = term
 
-        System.out.println("| TIME | MONDAY | TUESDAY | WEDNESDAY | THURSDAY | FRIDAY |")
-        System.out.println("|------|--------|---------|-----------|----------|--------|")
+        println("| TIME | MONDAY | TUESDAY | WEDNESDAY | THURSDAY | FRIDAY |")
+        println("|------|--------|---------|-----------|----------|--------|")
 
         var time = schedule.startOfDay
         val max = schedule.endOfDay
@@ -80,7 +80,7 @@ fun print(schedules: List<Schedule>, term: String) {
                 builder.append("|")
             }
 
-            System.out.println(builder.toString())
+            println(builder.toString())
             time++
         }
     }

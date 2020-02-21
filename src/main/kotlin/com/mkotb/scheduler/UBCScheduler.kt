@@ -16,10 +16,11 @@ import io.javalin.apibuilder.ApiBuilder.*
 import io.javalin.json.FromJsonMapper
 import io.javalin.json.JavalinJson
 import io.javalin.json.ToJsonMapper
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils.create
-import org.jetbrains.exposed.sql.transactions.experimental.transaction
+import org.jetbrains.exposed.sql.transactions.transaction
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
 import java.lang.reflect.Modifier
@@ -27,7 +28,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
-var debug = false
+var debug = System.getenv("DEBUG")?.startsWith("T") ?: false
 const val CURRENT_YEAR = "2018"
 const val CURRENT_SESSION = "W"
 const val BASE_URL = "https://courses.students.ubc.ca"
@@ -41,7 +42,7 @@ val invalidBuildings = listOf (
     "no scheduled meeting"
 )
 
-suspend fun main(args: Array<String>) {
+suspend fun main() {
     loadDatabase()
 
     // create our web server
@@ -105,7 +106,7 @@ suspend fun main(args: Array<String>) {
     }
 }
 
-suspend fun loadDatabase() {
+fun loadDatabase() {
     Database.connect(
         url = System.getenv("DB_URL"),
         driver = System.getenv("DB_DRIVER"),
@@ -128,7 +129,7 @@ suspend fun loadDatabase() {
  * makes nC2 requests to the Google Maps API where n is the
  * amount of buildings in the database
  */
-suspend fun populateBuildingTravelTimes(googleKey: String) {
+fun populateBuildingTravelTimes(googleKey: String) {
     transaction {
         val apiContext = GeoApiContext.Builder()
             .apiKey(googleKey)
@@ -137,11 +138,11 @@ suspend fun populateBuildingTravelTimes(googleKey: String) {
         val entries = ArrayList<String>()
 
         // iterate through every building
-        for (i in 0..(buildings.size - 1)) {
+        for (i in buildings.indices) {
             val buildingA = buildings[i]
 
             // iterate through every building after it in the list
-            for (j in (i + 1)..(buildings.size - 1)) {
+            for (j in (i + 1) until buildings.size) {
                 val buildingB = buildings[j]
 
                 // if the travel time has already been calculated, ignore it
@@ -158,7 +159,7 @@ suspend fun populateBuildingTravelTimes(googleKey: String) {
 
                 // notify manual input if there was an error from the API
                 if (route == null) {
-                    System.out.println("${buildingA.name}->${buildingB.name} needs to be manually inputted")
+                    println("${buildingA.name}->${buildingB.name} needs to be manually inputted")
                     continue
                 }
 
@@ -173,10 +174,10 @@ suspend fun populateBuildingTravelTimes(googleKey: String) {
                 }
             }
 
-            System.out.println("Finished ${buildingA.name}")
+            println("Finished ${buildingA.name}")
         }
 
-        System.out.println("Done! ${entries.size}")
+        println("Done! ${entries.size}")
     }
 }
 
@@ -184,7 +185,7 @@ suspend fun populateBuildingTravelTimes(googleKey: String) {
  * Pulls all subject data from UBC's site
  */
 fun pullCourses() {
-    System.out.println("Pulling all subjects")
+    println("Pulling all subjects")
 
     // connect to the directory of the site
     val doc = Jsoup.connect(ALL_SUBJECTS_URL).get()
@@ -220,7 +221,7 @@ fun pullCourses() {
             }
 
             val p = position.incrementAndGet()
-            System.out.println("Finished $subject $p/${subjects.size}")
+            println("Finished $subject $p/${subjects.size}")
         }
     }
 }
@@ -234,7 +235,7 @@ fun resolveCourse(subject: String, courseElement: Element) {
     val courseDoc = Jsoup.connect(String.format(BASE_COURSE_URL, subject, courseName)).get()
     val content = courseDoc.selectFirst(".content")
 
-    runBlocking {
+    GlobalScope.launch {
         val course = transaction {
             Course.findOrNew(subject, courseName)
         }
@@ -249,7 +250,7 @@ fun resolveCourse(subject: String, courseElement: Element) {
 }
 
 
-suspend fun resolveSection(subjectName: String, course: Course, element: Element): Section? {
+fun resolveSection(subjectName: String, course: Course, element: Element): Section? {
     // this element is under a table, so we are essentially reading the columns for info
     val elements = element.children()
     // find the name for this section, if non-existent, return null (invalid section)
@@ -355,7 +356,7 @@ suspend fun resolveSection(subjectName: String, course: Course, element: Element
         val section = Section.updateOrNew(course, sectionElement.text(), operation)
 
         // add a section location for every day -> building
-        dayToBuilding.forEach { day, building ->
+        dayToBuilding.forEach { (day, building) ->
             val b = Building.findOrNew(building)
 
             SectionLocation.newOrUpdate(section, day, b)
