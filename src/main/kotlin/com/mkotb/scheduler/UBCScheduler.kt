@@ -23,6 +23,7 @@ import org.jetbrains.exposed.sql.addLogger
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
+import org.jsoup.select.Elements
 import java.lang.reflect.Modifier
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -77,11 +78,21 @@ fun main() {
     }
 
     val scheduledExecutor = Executors.newSingleThreadScheduledExecutor()
+    var count = 0
 
-    // schedule to update course data every 30 minutes
     scheduledExecutor.scheduleAtFixedRate({ try {
-        pullCourses()
-    } catch (e: Exception) { e.printStackTrace() }}, 0L, 24L, TimeUnit.HOURS)
+        if ((count % 12) == 0) {
+            count = 1
+            pullCourses()
+            return@scheduleAtFixedRate
+        }
+
+        if (count > 2) {
+            updateAllSeats()
+        }
+
+        count++
+    } catch (e: Exception) { e.printStackTrace() }}, 0L, 1L, TimeUnit.HOURS)
 
     app.routes {
         path("courses") {
@@ -181,6 +192,26 @@ fun populateBuildingTravelTimes(googleKey: String) {
     }
 }
 
+fun updateAllSeats() {
+    println("Updating all seat information...")
+    val sections = transaction { Section.all().toList() }
+    val sectionThreadPool = Executors.newFixedThreadPool(
+        System.getenv("UBC_POOL_SIZE")?.toIntOrNull() ?: 5
+    )
+    val count = AtomicInteger(0)
+
+    sections.forEach { section ->
+        sectionThreadPool.submit {
+            transaction {
+                updateSection(section)
+            }
+
+            val position = count.incrementAndGet()
+            println("Updated $position/${sections.size}")
+        }
+    }
+}
+
 /**
  * Pulls all subject data from UBC's site
  */
@@ -253,6 +284,38 @@ fun resolveCourse(subject: String, courseElement: Element) {
     }
 }
 
+fun updateSection(section: Section) {
+    val course = section.course
+    val sectionDoc = Jsoup.connect(String.format(BASE_SECTION_URL,
+        course.subjectCode,
+        course.courseNumber,
+        section.name.split(" ").last()
+    )).get()
+    val content = sectionDoc.selectFirst(".content")
+    // find all tables in the content
+    val tables = content.select("table")
+
+    updateSeatInformation(section, tables)
+}
+
+fun updateSeatInformation(section: Section, tables: Elements) {
+    section.apply {
+        // get seating information if available (as an array of entries in a row of a table)
+        val seatingTableEntries = tables.firstOrNull {
+            it.firstOrNull()?.text() == "Seat Summary"
+        }?.selectFirst("tbody")?.children()
+
+        fun findNumber(element: Int): Int {
+            return seatingTableEntries?.getOrNull(element)?.selectFirst("strong")?.text()?.toIntOrNull() ?: 0
+        }
+
+        // copy information from columns
+        totalRemaining = findNumber(0)
+        currentlyRegistered = findNumber(1)
+        generalRemaining = findNumber(2)
+        restrictedRemaining = findNumber(3)
+    }
+}
 
 fun resolveSection(subjectName: String, course: Course, element: Element): Section? {
     // this element is under a table, so we are essentially reading the columns for info
@@ -339,20 +402,7 @@ fun resolveSection(subjectName: String, course: Course, element: Element): Secti
             it.firstOrNull()?.firstOrNull()?.firstOrNull()?.text()?.contains("Instructor") ?: false
         }?.select("a")?.joinToString(separator = ";") { it.text() }
 
-        // get seating information if available (as an array of entries in a row of a table)
-        val seatingTableEntries = tables.firstOrNull {
-            it.firstOrNull()?.text() == "Seat Summary"
-        }?.selectFirst("tbody")?.children()
-
-        fun findNumber(element: Int): Int {
-            return seatingTableEntries?.getOrNull(element)?.selectFirst("strong")?.text()?.toIntOrNull() ?: 0
-        }
-
-        // copy information from columns
-        totalRemaining = findNumber(0)
-        currentlyRegistered = findNumber(1)
-        generalRemaining = findNumber(2)
-        restrictedRemaining = findNumber(3)
+        updateSeatInformation(this, tables)
     }
 
     return transaction {
