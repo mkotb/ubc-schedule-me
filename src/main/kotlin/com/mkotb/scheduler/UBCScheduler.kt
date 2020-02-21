@@ -29,20 +29,20 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 var debug = System.getenv("DEBUG")?.startsWith("T") ?: false
-const val CURRENT_YEAR = "2018"
-const val CURRENT_SESSION = "W"
-const val BASE_URL = "https://courses.students.ubc.ca"
-const val BASE_COURSE_URL = "$BASE_URL/cs/courseschedule?tname=subj-course&dept=%s&course=%s&pname=subjarea&sessyr=$CURRENT_YEAR&sesscd=$CURRENT_SESSION"
-const val BASE_SECTION_URL = "$BASE_URL/cs/courseschedule?pname=subjarea&tname=subj-section&dept=%s&course=%s&section=%s&sessyr=$CURRENT_YEAR&sesscd=$CURRENT_SESSION"
-const val ALL_SUBJECTS_URL = "$BASE_URL/cs/courseschedule?tname=subj-all-departments&sessyr=$CURRENT_YEAR&sesscd=$CURRENT_SESSION&pname=subjarea"
-const val DEPARTMENTS_URL = "$BASE_URL/cs/courseschedule?pname=subjarea&tname=subj-department&dept=%s&sessyr=$CURRENT_YEAR&sesscd=$CURRENT_SESSION"
+val CURRENT_YEAR = System.getenv("UBC_YEAR") ?: "2019"
+val CURRENT_SESSION = System.getenv("UBC_SESSION") ?: "W"
+val BASE_URL = "https://courses.students.ubc.ca"
+val BASE_COURSE_URL = "$BASE_URL/cs/courseschedule?tname=subj-course&dept=%s&course=%s&pname=subjarea&sessyr=$CURRENT_YEAR&sesscd=$CURRENT_SESSION"
+val BASE_SECTION_URL = "$BASE_URL/cs/courseschedule?pname=subjarea&tname=subj-section&dept=%s&course=%s&section=%s&sessyr=$CURRENT_YEAR&sesscd=$CURRENT_SESSION"
+val ALL_SUBJECTS_URL = "$BASE_URL/cs/courseschedule?tname=subj-all-departments&sessyr=$CURRENT_YEAR&sesscd=$CURRENT_SESSION&pname=subjarea"
+val DEPARTMENTS_URL = "$BASE_URL/cs/courseschedule?pname=subjarea&tname=subj-department&dept=%s&sessyr=$CURRENT_YEAR&sesscd=$CURRENT_SESSION"
 
 val invalidBuildings = listOf (
     "to be announced",
     "no scheduled meeting"
 )
 
-suspend fun main() {
+fun main() {
     loadDatabase()
 
     // create our web server

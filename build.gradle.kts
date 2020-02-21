@@ -39,6 +39,7 @@ dependencies {
     // drivers
     implementation("com.h2database:h2:1.4.197")
     implementation("org.postgresql:postgresql:42.2.10")
+    implementation("com.microsoft.sqlserver:mssql-jdbc:8.1.1.jre8")
 
     implementation("org.slf4j:slf4j-simple:1.7.26")
 
