@@ -42,6 +42,7 @@ object Sections: IntIdTable() {
 class Section(id: EntityID<Int>): IntEntity(id) {
     companion object : IntEntityClass<Section>(Sections) {
         fun updateOrNew(course: Course, name: String, operation: Section.() -> Unit): Section {
+            var new = false
             val section = find { (Sections.course eq course.id) and (Sections.name eq name) }.firstOrNull()
                 // if there is no section, create one with the following operation
                 ?: Section.new {
@@ -49,11 +50,16 @@ class Section(id: EntityID<Int>): IntEntity(id) {
                     this.name = name
 
                     operation(this)
+                    new = true
                 }
 
-            // perform the update operation on the section
-            operation(section)
+            if (!new) {
+                // perform the update operation on the section
+                operation(section)
+            }
+
             return section
+
         }
     }
 

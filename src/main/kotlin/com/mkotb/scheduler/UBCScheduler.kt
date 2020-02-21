@@ -16,10 +16,10 @@ import io.javalin.apibuilder.ApiBuilder.*
 import io.javalin.json.FromJsonMapper
 import io.javalin.json.JavalinJson
 import io.javalin.json.ToJsonMapper
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.SchemaUtils.create
+import org.jetbrains.exposed.sql.StdOutSqlLogger
+import org.jetbrains.exposed.sql.addLogger
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Element
@@ -197,7 +197,7 @@ fun pullCourses() {
         .select("a").map { it.text() }
     // thread pool where the extraction per subject will be performed
     // any number above 20 will result in the site blocking the requests
-    val subjectThreadPool = Executors.newFixedThreadPool(20)
+    val subjectThreadPool = Executors.newFixedThreadPool(30)
     // how many subjects have been finished being pulled
     val position = AtomicInteger(0)
 
@@ -235,17 +235,19 @@ fun resolveCourse(subject: String, courseElement: Element) {
     val courseDoc = Jsoup.connect(String.format(BASE_COURSE_URL, subject, courseName)).get()
     val content = courseDoc.selectFirst(".content")
 
-    GlobalScope.launch {
-        val course = transaction {
-            Course.findOrNew(subject, courseName)
+    val course = transaction {
+        if (debug) {
+            addLogger(StdOutSqlLogger)
         }
 
-        // find all sections and resolve them
-        content.select(".section1").apply {
-            addAll(content.select(".section2"))
-        }.forEach {
-            resolveSection(subject, course, it)
-        }
+        Course.findOrNew(subject, courseName)
+    }
+
+    // find all sections and resolve them
+    content.select(".section1").apply {
+        addAll(content.select(".section2"))
+    }.forEach {
+        resolveSection(subject, course, it)
     }
 }
 
@@ -352,6 +354,10 @@ fun resolveSection(subjectName: String, course: Course, element: Element): Secti
     }
 
     return transaction {
+        if (debug) {
+            addLogger(StdOutSqlLogger)
+        }
+
         // create or update the section
         val section = Section.updateOrNew(course, sectionElement.text(), operation)
 
