@@ -81,7 +81,7 @@ fun main() {
     // schedule to update course data every 30 minutes
     scheduledExecutor.scheduleAtFixedRate({ try {
         pullCourses()
-    } catch (e: Exception) { e.printStackTrace() }}, 0L, 30L, TimeUnit.MINUTES)
+    } catch (e: Exception) { e.printStackTrace() }}, 0L, 24L, TimeUnit.HOURS)
 
     app.routes {
         path("courses") {
