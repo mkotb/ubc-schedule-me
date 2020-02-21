@@ -197,7 +197,9 @@ fun pullCourses() {
         .select("a").map { it.text() }
     // thread pool where the extraction per subject will be performed
     // any number above 20 will result in the site blocking the requests
-    val subjectThreadPool = Executors.newFixedThreadPool(30)
+    val subjectThreadPool = Executors.newFixedThreadPool(
+        System.getenv("UBC_POOL_SIZE").toIntOrNull() ?: 10
+    )
     // how many subjects have been finished being pulled
     val position = AtomicInteger(0)
 
