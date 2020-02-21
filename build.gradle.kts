@@ -59,11 +59,13 @@ application {
 }
 
 tasks.withType<Jar> {
+    configurations["compileClasspath"].forEach { file: File ->
+        from(zipTree(file.absoluteFile))
+    }
+
     manifest {
         attributes["Main-Class"] = "com.mkotb.scheduler.UBCSchedulerKt"
     }
 
-    configurations["compileClasspath"].forEach { file: File ->
-        from(zipTree(file.absoluteFile))
-    }
+    exclude("META-INF/*.RSA", "META-INF/*.SF", "META-INF/*.DSA")
 }
