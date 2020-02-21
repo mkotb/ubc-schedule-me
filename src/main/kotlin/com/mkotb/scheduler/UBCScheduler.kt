@@ -81,7 +81,7 @@ fun main() {
     var count = 0
 
     scheduledExecutor.scheduleAtFixedRate({ try {
-        if ((count % 12) == 0) {
+        if ((count % 24) == 0) {
             count = 1
             pullCourses()
             return@scheduleAtFixedRate
@@ -397,10 +397,14 @@ fun resolveSection(subjectName: String, course: Course, element: Element): Secti
             }
         }
 
-        // set the instructor
-        instructor = tables.firstOrNull {
+        val instructorValue = tables.firstOrNull {
             it.firstOrNull()?.firstOrNull()?.firstOrNull()?.text()?.contains("Instructor") ?: false
         }?.select("a")?.joinToString(separator = ";") { it.text() }
+
+        // set the instructor
+        if (instructorValue != null && instructorValue.length < 512) {
+            instructor = instructorValue
+        }
 
         updateSeatInformation(this, tables)
     }
