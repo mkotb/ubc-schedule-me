@@ -207,7 +207,7 @@ fun updateAllSeats() {
             }
 
             val position = count.incrementAndGet()
-            println("Updated $position/${sections.size}")
+            print("Updated $position/${sections.size}\r")
         }
     }
 }
