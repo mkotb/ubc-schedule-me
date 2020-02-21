@@ -87,12 +87,12 @@ fun main() {
             return@scheduleAtFixedRate
         }
 
-        if (count > 2) {
+        if (count > 1) {
             updateAllSeats()
         }
 
         count++
-    } catch (e: Exception) { e.printStackTrace() }}, 0L, 1L, TimeUnit.HOURS)
+    } catch (e: Exception) { e.printStackTrace() }}, 0L, 2L, TimeUnit.HOURS)
 
     app.routes {
         path("courses") {
