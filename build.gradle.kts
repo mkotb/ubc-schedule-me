@@ -2,12 +2,12 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
     java
+
     // Apply the Kotlin JVM plugin to add support for Kotlin.
     id("org.jetbrains.kotlin.jvm") version "1.3.41"
-}
 
-group = "com.mazenk"
-version = "1.0-SNAPSHOT"
+    application
+}
 
 repositories {
     maven(url = "https://jcenter.bintray.com") {
@@ -48,6 +48,21 @@ dependencies {
 configure<JavaPluginConvention> {
     sourceCompatibility = JavaVersion.VERSION_1_8
 }
+
 tasks.withType<KotlinCompile> {
     kotlinOptions.jvmTarget = "1.8"
+}
+
+application {
+    mainClassName = "com.mkotb.scheduler.UBCSchedulerKt"
+}
+
+tasks.withType<Jar> {
+    manifest {
+        attributes["Main-Class"] = "com.mkotb.scheduler.UBCSchedulerKt"
+    }
+
+    configurations["compileClasspath"].forEach { file: File ->
+        from(zipTree(file.absoluteFile))
+    }
 }
