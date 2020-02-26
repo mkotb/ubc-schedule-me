@@ -30,6 +30,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 var debug = System.getenv("DEBUG")?.startsWith("T") ?: false
+val UPDATE_SEATS = System.getenv("UPDATE_SEATS")?.startsWith("T") ?: true
 val CURRENT_YEAR = System.getenv("UBC_YEAR") ?: "2019"
 val CURRENT_SESSION = System.getenv("UBC_SESSION") ?: "W"
 val BASE_URL = "https://courses.students.ubc.ca"
@@ -193,6 +194,10 @@ fun populateBuildingTravelTimes(googleKey: String) {
 }
 
 fun updateAllSeats() {
+    if (!UPDATE_SEATS) {
+        return
+    }
+
     println("Updating all seat information...")
     val sections = transaction { Section.all().toList() }
     val sectionThreadPool = Executors.newFixedThreadPool(
@@ -207,7 +212,10 @@ fun updateAllSeats() {
             }
 
             val position = count.incrementAndGet()
-            print("Updated $position/${sections.size}\r")
+
+            if (position >= sections.size) {
+                println("Completed updating all seat information!")
+            }
         }
     }
 }
