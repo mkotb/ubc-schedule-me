@@ -1,8 +1,11 @@
 package com.mkotb.scheduler.routes
 
-import com.mkotb.scheduler.*
+import com.mkotb.scheduler.Schedule
+import com.mkotb.scheduler.SchedulingFactor
+import com.mkotb.scheduler.createSchedules
 import com.mkotb.scheduler.db.Course
 import com.mkotb.scheduler.db.Section
+import com.mkotb.scheduler.db.SectionLocation
 import io.javalin.Context
 import org.jetbrains.exposed.sql.transactions.transaction
 import java.time.DayOfWeek
@@ -143,4 +146,7 @@ class ExportedSection (section: Section) {
     val endMinutes = section.endMinutes
     val instructor = section.instructor
     val generalRemaining = section.generalRemaining
+    val locations = days.associateWith { transaction {
+        SectionLocation.find(section, it)?.building?.name
+    }}
 }

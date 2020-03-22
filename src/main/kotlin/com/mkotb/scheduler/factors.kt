@@ -154,9 +154,8 @@ class DistanceFactor: SchedulingFactor() {
         var proximity = 0
 
         section.days.forEach { day ->
-            val formattedDay = day.name.toLowerCase().substring(0, 3)
             val otherSections = classes.filter { it.days.contains(day) }
-            val sectionLocation = SectionLocation.find(section, formattedDay) ?: return@forEach
+            val sectionLocation = SectionLocation.find(section, day) ?: return@forEach
 
             val classesTravelTime = findClosestClasses(otherSections, section).toList()
                 .filterNotNull()
@@ -164,7 +163,7 @@ class DistanceFactor: SchedulingFactor() {
                 .filter { it.startMinutes == section.endMinutes || it.endMinutes == section.startMinutes }
                 // map to the travel time of the two sections
                 .mapNotNull {
-                    val otherLocation = SectionLocation.find(it, formattedDay) ?: return@mapNotNull null
+                    val otherLocation = SectionLocation.find(it, day) ?: return@mapNotNull null
 
                     BuildingTravelTime.find(sectionLocation.building, otherLocation.building)?.time
                 }

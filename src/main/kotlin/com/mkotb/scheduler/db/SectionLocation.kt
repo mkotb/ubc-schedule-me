@@ -5,6 +5,7 @@ import org.jetbrains.exposed.dao.IntEntity
 import org.jetbrains.exposed.dao.IntEntityClass
 import org.jetbrains.exposed.dao.IntIdTable
 import org.jetbrains.exposed.sql.and
+import java.time.DayOfWeek
 
 object SectionLocations: IntIdTable() {
     val section = reference("section", Sections)
@@ -30,6 +31,10 @@ class SectionLocation(id: EntityID<Int>): IntEntity(id) {
                     this.building = building
                 }
             }
+        }
+
+        fun find(section: Section, day: DayOfWeek): SectionLocation? {
+            return find(section, day.name.toLowerCase().substring(0, 3))
         }
 
         fun find(section: Section, day: String): SectionLocation? {
