@@ -15,14 +15,18 @@ object ScheduleController {
         val request = context.body<ScheduleRequest>()
 
         // ensure for every schedule
-        // they do not request more classes than they provide options for
+        // that their term amount matches
+        // how many options they gave us
         request.schedules.forEach {
             val allRequested = it.firstTermAmount + it.secondTermAmount
             val allAvailable = it.requiredFirstCourses.size + it.requiredSecondCourses.size + it.electives.size
 
             if (allRequested > allAvailable) {
-                context.json(InvalidCourseAmountsError(it.name))
-                return
+                val firstAdditional = Math.floorDiv(it.electives.size, 2)
+                val secondAdditional = it.electives.size - firstAdditional
+
+                it.firstTermAmount = it.requiredFirstCourses.size + firstAdditional
+                it.secondTermAmount = it.requiredSecondCourses.size + secondAdditional
             }
         }
 
@@ -120,9 +124,6 @@ class InputSchedule (
 }
 
 object InvalidCoursesError: ErrorResponse("Invalid courses provided")
-class InvalidCourseAmountsError (
-    val incorrectSchedule: String
-): ErrorResponse("$incorrectSchedule's schedule has too many courses requested for the amount they have chosen")
 
 class SchedulingResponse (
     val schedules: List<ExportedSchedule>
