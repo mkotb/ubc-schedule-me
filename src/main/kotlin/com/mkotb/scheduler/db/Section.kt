@@ -79,6 +79,8 @@ class Section(id: EntityID<Int>): IntEntity(id) {
     var generalRemaining by Sections.generalRemaining
     var restrictedRemaining by Sections.restrictedRemaining
 
+    val instructorAssociations by InstructorSectionAssociation referrersOn InstructorSectionAssociations.section
+
     val duration
         get() = endMinutes - startMinutes
     val days: List<DayOfWeek>

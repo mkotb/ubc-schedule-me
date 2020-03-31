@@ -133,6 +133,8 @@ fun loadDatabase() {
         create(SectionLocations)
         create(Buildings)
         create(BuildingTravelTimes)
+        create(Instructors)
+        create(InstructorSectionAssociations)
     }
 }
 
@@ -407,12 +409,19 @@ fun resolveSection(subjectName: String, course: Course, element: Element): Secti
 
         val instructorValue = tables.firstOrNull {
             it.firstOrNull()?.firstOrNull()?.firstOrNull()?.text()?.contains("Instructor") ?: false
-        }?.select("a")?.joinToString(separator = ";") { it.text() }
+        }?.select("a")?.map { it.text() }/*?.joinToString(separator = ";") { it.text() } */
+
+        instructorValue?.forEach { name ->
+            InstructorSectionAssociation.findOrNew(
+                this,
+                Instructor.findOrNew(name)
+            )
+        }
 
         // set the instructor
-        if (instructorValue != null && instructorValue.length < 512) {
-            instructor = instructorValue
-        }
+        //if (instructorValue != null && instructorValue.length < 512) {
+        // instructor = instructorValue
+        //}
 
         updateSeatInformation(this, tables)
     }
