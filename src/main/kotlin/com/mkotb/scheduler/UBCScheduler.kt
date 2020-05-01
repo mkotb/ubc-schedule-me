@@ -31,7 +31,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 var debug = System.getenv("DEBUG")?.startsWith("T") ?: false
 val UPDATE_SEATS = System.getenv("UPDATE_SEATS")?.startsWith("T") ?: true
-val CURRENT_YEAR = System.getenv("UBC_YEAR") ?: "2019"
+val CURRENT_YEAR = System.getenv("UBC_YEAR") ?: "2020"
 val CURRENT_SESSION = System.getenv("UBC_SESSION") ?: "W"
 val BASE_URL = "https://courses.students.ubc.ca"
 val BASE_COURSE_URL = "$BASE_URL/cs/courseschedule?tname=subj-course&dept=%s&course=%s&pname=subjarea&sessyr=$CURRENT_YEAR&sesscd=$CURRENT_SESSION"
@@ -335,6 +335,19 @@ fun resolveSection(subjectName: String, course: Course, element: Element): Secti
     // a map of day of week to the building the section is held in
     val dayToBuilding = HashMap<String, String>()
 
+    // connect to the section page
+    val doc = Jsoup.connect(
+        String.format(
+            BASE_SECTION_URL,
+            subjectName,
+            course.courseNumber,
+            sectionElement.text().split(" ").last()
+        )
+    ).get()
+    val content = doc.selectFirst(".content")
+    // find all tables in the content
+    val tables = content.select("table")
+
     val operation: Section.() -> Unit = {
         // find the link to the section
         link = sectionElement.attr("href")
@@ -362,12 +375,6 @@ fun resolveSection(subjectName: String, course: Course, element: Element): Secti
 
         startMinutes = textToTime(elements[6].text())
         endMinutes = textToTime(elements[7].text())
-
-        // connect to the section page
-        val doc = Jsoup.connect(String.format(BASE_SECTION_URL, subjectName, course.courseNumber, sectionElement.text().split(" ").last())).get()
-        val content = doc.selectFirst(".content")
-        // find all tables in the content
-        val tables = content.select("table")
 
         // find the schedule entries for this section
         val dayEntries = content.select(".table-striped")
@@ -407,17 +414,6 @@ fun resolveSection(subjectName: String, course: Course, element: Element): Secti
             }
         }
 
-        val instructorValue = tables.firstOrNull {
-            it.firstOrNull()?.firstOrNull()?.firstOrNull()?.text()?.contains("Instructor") ?: false
-        }?.select("a")?.map { it.text() }/*?.joinToString(separator = ";") { it.text() } */
-
-        instructorValue?.forEach { name ->
-            InstructorSectionAssociation.findOrNew(
-                this,
-                Instructor.findOrNew(name)
-            )
-        }
-
         // set the instructor
         //if (instructorValue != null && instructorValue.length < 512) {
         // instructor = instructorValue
@@ -433,6 +429,17 @@ fun resolveSection(subjectName: String, course: Course, element: Element): Secti
 
         // create or update the section
         val section = Section.updateOrNew(course, sectionElement.text(), operation)
+
+        val instructorValue = tables.firstOrNull {
+            it.firstOrNull()?.firstOrNull()?.firstOrNull()?.text()?.contains("Instructor") ?: false
+        }?.select("a")?.map { it.text() }
+
+        instructorValue?.forEach { name ->
+            InstructorSectionAssociation.findOrNew(
+                section,
+                Instructor.findOrNew(name)
+            )
+        }
 
         // add a section location for every day -> building
         dayToBuilding.forEach { (day, building) ->
