@@ -430,7 +430,7 @@ fun resolveSection(subjectName: String, course: Course, element: Element): Secti
         // create or update the section
         val section = Section.updateOrNew(course, sectionElement.text(), operation)
 
-        val instructorValue = tables.firstOrNull {
+        /*val instructorValue = tables.firstOrNull {
             it.firstOrNull()?.firstOrNull()?.firstOrNull()?.text()?.contains("Instructor") ?: false
         }?.select("a")?.map { it.text() }
 
@@ -439,7 +439,7 @@ fun resolveSection(subjectName: String, course: Course, element: Element): Secti
                 section,
                 Instructor.findOrNew(name)
             )
-        }
+        }*/
 
         // add a section location for every day -> building
         dayToBuilding.forEach { (day, building) ->
